@@ -1,0 +1,92 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/client"
+}
+
+model User {
+  id               String                 @id @default(uuid())
+  email            String                 @unique
+  name             String
+  phone            String?
+  city             String?
+  riskScore        Int                    @default(0)
+  createdAt        DateTime               @default(now())
+  safeshareEnabled Boolean                @default(false)
+  exposures        ExposureRecord[]
+  optOutRequests   OptOutRequest[]
+  relistEvents     RelistEvent[]
+  contributions    SafeShareContribution[]
+}
+
+model Broker {
+  id             String           @id @default(uuid())
+  name           String
+  url            String
+  optOutUrl      String
+  optOutMethod   String           // "email", "form", "api"
+  jurisdiction   String           // "CCPA", "GDPR", "DPDP", "GLOBAL"
+  tier           Int              // 1, 2, 3 (1 is highest threat)
+  category       String           // "People Search", "Marketing", "Financial", "Risk"
+  exposures      ExposureRecord[]
+  optOutRequests OptOutRequest[]
+  relistEvents   RelistEvent[]
+}
+
+model ExposureRecord {
+  id             String   @id @default(uuid())
+  userId         String
+  brokerId       String
+  dataCategories String   // Comma-separated list of categories like "Address, Phone, Financial"
+  detectedAt     DateTime @default(now())
+  status         String   // "Exposed", "Removed", "Pending"
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broker         Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+}
+
+model OptOutRequest {
+  id                    String    @id @default(uuid())
+  userId                String
+  brokerId              String
+  letterText            String
+  submittedAt           DateTime  @default(now())
+  deadline              DateTime
+  status                String    // "Pending", "Complied", "Non-Compliant"
+  complianceConfirmedAt DateTime?
+  
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broker                Broker    @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+}
+
+model RelistEvent {
+  id         String   @id @default(uuid())
+  userId     String
+  brokerId   String
+  detectedAt DateTime @default(now())
+  
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broker     Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+}
+
+model SafeShareContribution {
+  id                String    @id @default(uuid())
+  userId            String
+  anonymizedPayload String    // JSON string containing generalized data (e.g. zip, age range)
+  createdAt         DateTime  @default(now())
+  withdrawnAt       DateTime?
+  
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SafeShareAuditLedger {
+  id             String   @id @default(uuid())
+  researcherId   String
+  datasetQueried String
+  timestamp      DateTime @default(now())
+  previousHash   String
+  hash           String
+}
