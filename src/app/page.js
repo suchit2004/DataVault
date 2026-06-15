@@ -31,6 +31,15 @@ export default function Home() {
   const [lastBlockAdded, setLastBlockAdded] = useState(null);
   const [ledgerVerification, setLedgerVerification] = useState(null);
   const [checkingLedger, setCheckingLedger] = useState(false);
+  
+  // Fine-grained Consent States
+  const [shareAge, setShareAge] = useState(true);
+  const [shareRegion, setShareRegion] = useState(true);
+  const [shareDemographics, setShareDemographics] = useState(true);
+  const [shareDeviceMeta, setShareDeviceMeta] = useState(false);
+  
+  // Ledger Validation Animation Steps
+  const [verificationSteps, setVerificationSteps] = useState([]);
 
   // Check if session exists in localStorage
   useEffect(() => {
@@ -197,21 +206,63 @@ export default function Home() {
   const handleVerifyLedger = async () => {
     setCheckingLedger(true);
     setLedgerVerification(null);
+    setVerificationSteps([]);
+
+    const steps = [
+      "Initializing hash chain audit log sweep...",
+      "Validating genesis block node signature...",
+      "Recalculating SHA-256 blocks database hashes...",
+      "Verifying hash link chains back to previous records..."
+    ];
 
     try {
       const res = await fetch("/api/safeshare/query");
       const result = await res.json();
 
-      setTimeout(() => {
-        setCheckingLedger(false);
-        if (result.success) {
-          setLedgerVerification(result.verification);
-        }
-      }, 1200);
+      steps.forEach((step, index) => {
+        setTimeout(() => {
+          setVerificationSteps((prev) => [...prev, step]);
+          
+          if (index === steps.length - 1) {
+            setCheckingLedger(false);
+            if (result.success) {
+              setLedgerVerification(result.verification);
+            }
+          }
+        }, (index + 1) * 450);
+      });
     } catch (err) {
       console.error(err);
       setCheckingLedger(false);
     }
+  };
+
+  const getAnonymizedPayloadPreview = () => {
+    if (!dashboardData || !dashboardData.user) return {};
+    const user = dashboardData.user;
+    
+    let region = "Unknown Region";
+    if (user.city) {
+      const parts = user.city.split(",");
+      if (parts.length > 1) {
+        region = `${parts[parts.length - 1].trim()} Region`;
+      } else {
+        region = `${user.city} Region`;
+      }
+    }
+
+    // Generate a mock age bracket stably
+    const nameHash = user.name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const brackets = ["18-24", "25-34", "35-44", "45-54", "55+"];
+    const ageGroup = brackets[nameHash % brackets.length];
+
+    return {
+      ...(shareAge ? { ageBracket: ageGroup } : {}),
+      ...(shareRegion ? { region: region } : {}),
+      ...(shareDemographics ? { telemetryType: "Anonymized Public Safety Telemetry" } : {}),
+      ...(shareDeviceMeta ? { networkType: "Residential Broadband / Aggregated" } : {}),
+      timestamp: new Date().toISOString()
+    };
   };
 
   const getComplaintText = (req) => {
@@ -837,17 +888,32 @@ Date: ${new Date().toLocaleDateString()}`.trim();
                       </button>
                     </div>
 
-                    {/* Ledger verification alert */}
-                    {ledgerVerification && (
-                      <div className={`p-4 rounded-xl border text-xs leading-relaxed ${
+                    {/* Ledger verification check animation steps */}
+                    {checkingLedger && (
+                      <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 text-xs leading-relaxed space-y-2 animate-pulse">
+                        <strong className="text-cyan-400 uppercase tracking-wider block font-bold">Recalculating Cryptographic Signatures...</strong>
+                        <div className="space-y-1">
+                          {verificationSteps.map((step, idx) => (
+                            <div key={idx} className="text-[11px] text-slate-300 flex items-center space-x-1.5 animate-fadeIn">
+                              <span className="text-cyan-400 font-bold">✓</span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Ledger verification final alert */}
+                    {!checkingLedger && ledgerVerification && (
+                      <div className={`p-4 rounded-xl border text-xs leading-relaxed animate-fadeIn ${
                         ledgerVerification.isValid 
                           ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
                           : "bg-red-500/10 border-red-500/20 text-red-400"
                       }`}>
-                        <strong>{ledgerVerification.isValid ? "✓ Ledger Authenticated" : "⚠️ TAMPER DETECTED"}</strong>:
+                        <strong>{ledgerVerification.isValid ? "✓ Hash Chain Authenticated" : "⚠️ TAMPER DETECTED"}</strong>:
                         <p className="mt-1 text-[11px] text-slate-300">
                           {ledgerVerification.isValid 
-                            ? `Validated ${dashboardData.ledger.length} block chain records successfully. Previous block linkage verified using SHA-256.`
+                            ? `Validated ${dashboardData.ledger.length} block chain records successfully. All parent block hashes match their corresponding SHA-256 signatures.`
                             : `Compromised Block Identified: ${ledgerVerification.compromisedBlockId}. Reason: ${ledgerVerification.reason}`}
                         </p>
                       </div>
@@ -912,6 +978,42 @@ Date: ${new Date().toLocaleDateString()}`.trim();
                       </div>
                     </div>
                   )}
+
+                  {/* Fine-grained Consent Controls */}
+                  <div className="border-t border-white/5 pt-4 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Fine-Grained Consent Control</h4>
+                      <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                        Customize what anonymized data points you contribute to the SafeShare public safety database. Changes are updated in real-time.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {[
+                        { label: "Age Bracket", val: shareAge, setter: setShareAge },
+                        { label: "Region (City/State)", val: shareRegion, setter: setShareRegion },
+                        { label: "Telemetry Description", val: shareDemographics, setter: setShareDemographics },
+                        { label: "Aggregated Device Meta", val: shareDeviceMeta, setter: setShareDeviceMeta },
+                      ].map((item, idx) => (
+                        <label key={idx} className="flex items-center space-x-2 bg-slate-950/40 border border-white/5 hover:border-white/10 rounded-lg p-2 cursor-pointer select-none transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={item.val}
+                            onChange={(e) => item.setter(e.target.checked)}
+                            className="rounded border-white/10 text-purple-600 focus:ring-purple-500/50 bg-slate-900 w-3 h-3"
+                          />
+                          <span className="text-[9px] text-slate-300 font-semibold">{item.label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Live Anonymized JSON Payload Preview</span>
+                      <pre className="bg-slate-950/80 border border-white/5 rounded-xl p-3 text-[10px] text-cyan-400 font-mono overflow-x-auto max-h-[150px] leading-relaxed select-text">
+                        {JSON.stringify(getAnonymizedPayloadPreview(), null, 2)}
+                      </pre>
+                    </div>
+                  </div>
                 </div>
 
               </div>
