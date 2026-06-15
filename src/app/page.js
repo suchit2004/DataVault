@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import ShadowProfileMap from "@/components/ShadowProfileMap";
+import HoneyPotInbox from "@/components/HoneyPotInbox";
 
 export default function Home() {
   const [formData, setFormData] = useState({
@@ -18,6 +19,13 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, shadow, honeypot, safeshare
   const [optOutStatus, setOptOutStatus] = useState("idle"); // idle, sending, complete
   
+  // Modals and dynamic simulations
+  const [activeHoneyPot, setActiveHoneyPot] = useState(null);
+  const [activeComplaintReq, setActiveComplaintReq] = useState(null);
+  const [activeLetterReq, setActiveLetterReq] = useState(null);
+  const [submittingEscalation, setSubmittingEscalation] = useState(false);
+  const [escalationSuccess, setEscalationSuccess] = useState(false);
+
   // Researcher query simulation state
   const [simulatingQuery, setSimulatingQuery] = useState(false);
   const [lastBlockAdded, setLastBlockAdded] = useState(null);
@@ -206,13 +214,12 @@ export default function Home() {
     }
   };
 
-  const handleDownloadComplaint = (req) => {
-    if (!dashboardData) return;
+  const getComplaintText = (req) => {
+    if (!dashboardData) return "";
     const honeyPot = dashboardData.honeyPots.find(hp => hp.brokerName === req.broker.name);
     const aliasEmail = honeyPot ? honeyPot.alias : "my tracking alias";
 
-    const complaintText = `
-REGULATORY COMPLAINT FORM
+    return `REGULATORY COMPLAINT FORM
 JURISDICTION: ${req.broker.jurisdiction}
 TO: Data Protection Authority / Consumer Privacy Board / Agency
 
@@ -238,9 +245,11 @@ REQUESTED ACTIONS:
 
 Signed: ${dashboardData.user.name}
 Submitted via DataVault Regulatory Portal
-Date: ${new Date().toLocaleDateString()}
-    `.trim();
+Date: ${new Date().toLocaleDateString()}`.trim();
+  };
 
+  const handleDownloadComplaint = (req) => {
+    const complaintText = getComplaintText(req);
     const element = document.createElement("a");
     const file = new Blob([complaintText], { type: "text/plain" });
     element.href = URL.createObjectURL(file);
@@ -248,6 +257,15 @@ Date: ${new Date().toLocaleDateString()}
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+  };
+
+  const handleSimulateFiling = (req) => {
+    setSubmittingEscalation(true);
+    setEscalationSuccess(false);
+    setTimeout(() => {
+      setSubmittingEscalation(false);
+      setEscalationSuccess(true);
+    }, 1800);
   };
 
   const handleResetScan = () => {
@@ -517,12 +535,20 @@ Date: ${new Date().toLocaleDateString()}
                               </p>
                             </div>
                             <div className="flex items-center justify-between md:justify-end space-x-4">
-                              <div className="text-right">
+                              <div className="text-right flex flex-col items-end">
                                 <span className={`text-xs font-bold uppercase ${statusColor}`}>{exp.status}</span>
                                 {associatedRequest && (
-                                  <p className="text-[10px] text-slate-500 mt-0.5">
-                                    Deadline: {new Date(associatedRequest.deadline).toLocaleDateString()}
-                                  </p>
+                                  <>
+                                    <p className="text-[10px] text-slate-500 mt-0.5">
+                                      Deadline: {new Date(associatedRequest.deadline).toLocaleDateString()}
+                                    </p>
+                                    <button
+                                      onClick={() => setActiveLetterReq(associatedRequest)}
+                                      className="text-[9px] text-purple-400 hover:text-purple-300 font-bold bg-purple-500/10 hover:bg-purple-500/20 px-2 py-0.5 rounded transition-all mt-1 cursor-pointer"
+                                    >
+                                      View Legal Letter
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -714,8 +740,17 @@ Date: ${new Date().toLocaleDateString()}
                                   {hp.status}
                                 </span>
                               </td>
-                              <td className="py-3 text-right font-bold text-red-400">
-                                {hp.detectedSpam > 0 ? `⚠️ ${hp.detectedSpam} caught` : "0"}
+                              <td className="py-3 text-right">
+                                <button
+                                  onClick={() => setActiveHoneyPot(hp)}
+                                  className={`text-[9px] font-bold px-2 py-1 rounded transition-all cursor-pointer ${
+                                    hp.detectedSpam > 0 
+                                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 animate-pulse" 
+                                      : "bg-white/5 hover:bg-white/10 text-slate-400 border border-white/5"
+                                  }`}
+                                >
+                                  {hp.detectedSpam > 0 ? `⚠️ ${hp.detectedSpam} caught (Open)` : "View Inbox (0)"}
+                                </button>
                               </td>
                             </tr>
                           ))
@@ -756,14 +791,14 @@ Date: ${new Date().toLocaleDateString()}
                           </div>
                           
                           <button
-                            onClick={() => handleDownloadComplaint(req)}
+                            onClick={() => isNonCompliant && setActiveComplaintReq(req)}
                             className={`w-full py-2 rounded-lg text-[10px] font-bold uppercase transition-all tracking-wider ${
                               isNonCompliant 
                                 ? "bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 cursor-pointer" 
                                 : "bg-white/5 text-slate-500 border border-white/5 cursor-not-allowed"
                             }`}
                           >
-                            Export Regulatory Complaint
+                            {isNonCompliant ? "Review & File Complaint" : "Pending Window"}
                           </button>
                         </div>
                       );
@@ -884,6 +919,139 @@ Date: ${new Date().toLocaleDateString()}
 
           </div>
         </section>
+      )}
+
+      {activeHoneyPot && (
+        <HoneyPotInbox
+          honeyPot={activeHoneyPot}
+          onClose={() => setActiveHoneyPot(null)}
+        />
+      )}
+
+      {activeComplaintReq && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[550px] flex flex-col shadow-2xl relative">
+            <div className="px-6 py-4 bg-slate-950/50 border-b border-white/5 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+                  <span>⚖️ AI Legal Escalation Draft</span>
+                </h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  Jurisdiction: <span className="text-white font-bold">{activeComplaintReq.broker.jurisdiction}</span> • Pre-filled based on audit logs.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setActiveComplaintReq(null);
+                  setEscalationSuccess(false);
+                }}
+                className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg p-2 transition-colors cursor-pointer text-xs font-bold"
+              >
+                ✕ Close
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {escalationSuccess ? (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl p-5 flex flex-col items-center justify-center text-center space-y-3 animate-fadeIn my-6">
+                  <span className="text-4xl">✓</span>
+                  <h4 className="text-sm font-bold uppercase tracking-wider">Complaint Dispatched Successfully</h4>
+                  <p className="text-xs text-slate-300 max-w-md leading-relaxed">
+                    Your formal compliance complaint has been compiled and digitally submitted to the regulatory authority representing the <strong>{activeComplaintReq.broker.jurisdiction}</strong> jurisdiction.
+                  </p>
+                  <div className="font-mono text-[10px] bg-slate-950/60 border border-white/5 rounded px-3 py-2 mt-2 select-text">
+                    Filing ID: <span className="text-cyan-400">DV-REG-COMP-{Math.floor(100000 + Math.random() * 900000)}</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-slate-950/60 border border-white/5 rounded-xl p-4 font-mono text-[11px] text-slate-300 max-h-[280px] overflow-y-auto whitespace-pre-wrap select-text">
+                    {getComplaintText(activeComplaintReq)}
+                  </div>
+                  
+                  <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-4 text-xs text-slate-400 leading-relaxed flex items-start space-x-2">
+                    <span className="text-red-400 font-bold text-sm">⚠️</span>
+                    <span>
+                      <strong>Regulatory Basis:</strong> This report acts as legal notice under CCPA/GDPR/DPDP rules. Downloading/submitting compiles active proof that the data broker failed to delete your profile within the legal timeframe and actively routed marketing emails to your tracking alias.
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {!escalationSuccess && (
+              <div className="px-6 py-4 bg-slate-950/40 border-t border-white/5 flex space-x-3 justify-end">
+                <button
+                  onClick={() => handleDownloadComplaint(activeComplaintReq)}
+                  className="bg-white/5 hover:bg-white/10 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition-colors cursor-pointer uppercase tracking-wider"
+                >
+                  Download .txt File
+                </button>
+                <button
+                  onClick={() => handleSimulateFiling(activeComplaintReq)}
+                  disabled={submittingEscalation}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-800/50 text-white font-bold px-4 py-2.5 rounded-lg text-xs transition-colors cursor-pointer uppercase tracking-wider flex items-center space-x-1.5"
+                >
+                  {submittingEscalation ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin inline-block" />
+                      <span>Filing with Agency...</span>
+                    </>
+                  ) : (
+                    <span>Submit Complaint</span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeLetterReq && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[550px] flex flex-col shadow-2xl relative">
+            <div className="px-6 py-4 bg-slate-950/50 border-b border-white/5 flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  🤖 AI Legal Deletion Request
+                </h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  Data Broker: <span className="text-white font-bold">{activeLetterReq.broker.name}</span> • Jurisdiction: <span className="text-white">{activeLetterReq.broker.jurisdiction}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveLetterReq(null)}
+                className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg p-2 transition-colors cursor-pointer text-xs font-bold"
+              >
+                ✕ Close
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="bg-slate-950/60 border border-white/5 rounded-xl p-4 font-mono text-[11px] text-slate-300 whitespace-pre-wrap select-text leading-relaxed">
+                {activeLetterReq.letterText}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-950/40 border-t border-white/5 flex justify-between items-center text-[10px] text-slate-500">
+              <span>Status: <strong className="text-amber-400 font-bold uppercase">{activeLetterReq.status}</strong></span>
+              <button
+                onClick={() => {
+                  const element = document.createElement("a");
+                  const file = new Blob([activeLetterReq.letterText], { type: "text/plain" });
+                  element.href = URL.createObjectURL(file);
+                  element.download = `${activeLetterReq.broker.name.replace(/\s+/g, "_")}_opt_out_letter.txt`;
+                  document.body.appendChild(element);
+                  element.click();
+                  document.body.removeChild(element);
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-lg transition-colors cursor-pointer uppercase tracking-wider text-[9px]"
+              >
+                Download Letter
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer copyright */}
