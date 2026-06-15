@@ -2,8 +2,12 @@ import React, { useState } from "react";
 
 export default function ShadowProfileMap() {
   const [hoveredNode, setHoveredNode] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newRelation, setNewRelation] = useState("Sibling");
+  const [newExposedData, setNewExposedData] = useState("");
 
-  const nodes = [
+  const [nodes, setNodes] = useState([
     { id: "user", label: "You (User)", type: "user", x: 300, y: 200, color: "#a855f7", info: "Your profile: Name, Email, Phone, City." },
     
     // Relations
@@ -18,9 +22,9 @@ export default function ShadowProfileMap() {
     { id: "beenverified", label: "BeenVerified", type: "broker", x: 260, y: 350, color: "#ef4444", info: "BeenVerified links Spouse and Sibling to your household." },
     { id: "experian", label: "Experian", type: "broker", x: 540, y: 150, color: "#ef4444", info: "Experian sells marketing profiles matching Coworker & Spouse." },
     { id: "lexisnexis", label: "LexisNexis", type: "broker", x: 520, y: 310, color: "#ef4444", info: "LexisNexis builds risk charts connecting your family directory." }
-  ];
+  ]);
 
-  const links = [
+  const [links, setLinks] = useState([
     // User relationships
     { source: "user", target: "mother" },
     { source: "user", target: "sibling" },
@@ -40,10 +44,49 @@ export default function ShadowProfileMap() {
     { source: "user", target: "beenverified", threat: true },
     { source: "user", target: "experian", threat: true },
     { source: "user", target: "lexisnexis", threat: true }
-  ];
+  ]);
 
   const handleNodeHover = (node) => {
     setHoveredNode(node);
+  };
+
+  const handleAddConnection = (e) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+
+    const id = newName.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.random().toString(36).substr(2, 4);
+    const relationCount = nodes.filter(n => n.type === "relation").length;
+    // Circular angle around center (300, 200)
+    const angle = ((relationCount * 72 + 36) * Math.PI) / 180;
+    const radius = 100 + Math.random() * 25;
+    const x = Math.round(300 + Math.cos(angle) * radius);
+    const y = Math.round(200 + Math.sin(angle) * radius);
+
+    const info = `${newRelation} (${newName})'s records are interconnected. Exposed data: ${newExposedData || "Linked address archives and phone listing matches."}`;
+
+    const newNode = {
+      id,
+      label: `${newRelation} (${newName})`,
+      type: "relation",
+      x,
+      y,
+      color: "#06b6d4",
+      info
+    };
+
+    const newLink1 = { source: "user", target: id };
+    
+    // Connect to a data broker based on relationship index
+    const brokersList = nodes.filter(n => n.type === "broker");
+    const targetBroker = brokersList[relationCount % brokersList.length];
+    const newLink2 = { source: id, target: targetBroker.id };
+
+    setNodes(prev => [...prev, newNode]);
+    setLinks(prev => [...prev, newLink1, newLink2]);
+
+    setNewName("");
+    setNewExposedData("");
+    setShowAddForm(false);
   };
 
   return (
@@ -152,19 +195,71 @@ export default function ShadowProfileMap() {
       </div>
 
       {/* Node Info Panel */}
-      <div className="w-full md:w-64 bg-slate-900/40 border border-white/5 rounded-2xl p-5 flex flex-col justify-between h-[380px]">
-        <div>
-          <h4 className="text-sm font-bold uppercase tracking-wider text-purple-400 mb-2">Shadow Profiling</h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Data brokers construct "shadow profiles" by merging public listings of your family members, friends, and co-workers.
-          </p>
-          <div className="border-t border-white/5 my-4" />
-          
-          {hoveredNode ? (
+      <div className="w-full md:w-64 bg-slate-900/40 border border-white/5 rounded-2xl p-5 flex flex-col justify-between h-[380px] overflow-y-auto">
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Shadow Profiling</h4>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-1 rounded transition-colors"
+            >
+              {showAddForm ? "Cancel" : "+ Add Link"}
+            </button>
+          </div>
+
+          <div className="border-t border-white/5" />
+
+          {showAddForm ? (
+            <form onSubmit={handleAddConnection} className="space-y-3">
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Name</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Robert"
+                  required
+                  className="w-full bg-slate-950/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Relationship</label>
+                <select
+                  value={newRelation}
+                  onChange={(e) => setNewRelation(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="Father">Father</option>
+                  <option value="Mother">Mother</option>
+                  <option value="Sibling">Sibling</option>
+                  <option value="Spouse">Spouse</option>
+                  <option value="Colleague">Colleague</option>
+                  <option value="Friend">Friend</option>
+                  <option value="Roommate">Roommate</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Exposed Data Details</label>
+                <input
+                  type="text"
+                  value={newExposedData}
+                  onChange={(e) => setNewExposedData(e.target.value)}
+                  placeholder="e.g. Shares old billing address"
+                  className="w-full bg-slate-950/60 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-1.5 rounded text-[10px] uppercase transition-colors"
+              >
+                Insert Connection Node
+              </button>
+            </form>
+          ) : hoveredNode ? (
             <div className="space-y-2.5">
               <div className="flex items-center space-x-2">
                 <span
-                  className="w-2.5 h-2.5 rounded-full"
+                  className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: hoveredNode.color }}
                 />
                 <span className="text-xs font-bold text-white uppercase">{hoveredNode.label}</span>
@@ -175,15 +270,18 @@ export default function ShadowProfileMap() {
             </div>
           ) : (
             <div className="text-xs text-slate-500 italic p-3 text-center border border-dashed border-white/5 rounded-lg">
-              Hover over nodes in the graph to audit exposure connections.
+              Hover over nodes in the graph to audit exposure connections, or click "+ Add Link" to map a new relative.
             </div>
           )}
         </div>
 
-        <div className="mt-4 text-[10px] text-slate-500 bg-red-500/5 border border-red-500/10 rounded-lg p-2.5">
-          ⚠️ <strong>Stalker threat</strong>: 3 out of 5 people search sites map Sibling / Parent locations to find private targets.
-        </div>
+        {!showAddForm && (
+          <div className="mt-4 text-[10px] text-slate-500 bg-red-500/5 border border-red-500/10 rounded-lg p-2.5">
+            ⚠️ <strong>Stalker threat</strong>: 3 out of 5 people search sites map Sibling / Parent locations to bypass target privacy limits.
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
